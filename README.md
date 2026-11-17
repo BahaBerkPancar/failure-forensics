@@ -58,9 +58,31 @@ redactor=..., rules=[...])` to change that. Outside `ff.run`, `ff.step` does not
 | `ff failures` | the culprit of every failed run |
 | `ff clusters [--top N] [--by-tag KEY]` | signatures with count, share of runs, first/last seen, examples |
 | `ff gc --keep-days N` | delete older runs |
+| `ff ui [--port N]` | local web UI, read-only (needs the `ui` extra) |
 
 All take `--db PATH` and `--json`. Exit code 0, or 3 on usage and database errors.
 `failure-forensics` is an alias for `ff`.
+
+## UI
+
+A local web view over the store, read-only: it opens the SQLite file with `mode=ro` and cannot change it.
+Streamlit is an optional extra; the core package and CLI do not need it.
+
+```bash
+uv sync --extra ui
+uv run ff ui --db examples/t2s/demo.db      # http://127.0.0.1:8501 (localhost only, telemetry off)
+```
+
+Pages: **Overview** (totals, failures over time per cluster, biggest clusters), **Runs** (filter by status,
+pipeline, tag, culprit step, cluster, case id; pick a row to open it), **Run detail** (waterfall with the
+culprit highlighted, inputs and outputs of every step), **Clusters** (count, share, first/last seen,
+example runs; pick one to list its runs) and **Diff** (a failing run next to the nearest passing run of the
+same case, with the first step whose output differs marked). The sidebar window counts back from the
+newest run, not from the wall clock. Values from the database are shown as text or code, never as HTML.
+
+![Overview](docs/ui-overview.png)
+![Run detail](docs/ui-run.png)
+![Diff](docs/ui-diff.png)
 
 ## What counts as a failure
 

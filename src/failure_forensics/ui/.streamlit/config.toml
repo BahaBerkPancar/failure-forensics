@@ -1,0 +1,31 @@
+# Bundled with the UI; `ff ui` starts Streamlit with this folder as its working directory.
+[browser]
+gatherUsageStats = false
+
+[server]
+address = "127.0.0.1"
+headless = true
+fileWatcherType = "none"
+
+[client]
+toolbarMode = "minimal"
+showErrorDetails = "none"
+
+[theme]
+base = "light"
+primaryColor = "#B23A24"
+backgroundColor = "#F8F8F6"
+secondaryBackgroundColor = "#EFEFEC"
+textColor = "#1D1D1B"
+borderColor = "#DAD9D3"
+font = "sans-serif"
+codeFont = "monospace"
+baseRadius = "8px"
+baseFontSize = 15
+
+[theme.dark]
+primaryColor = "#E4806A"
+backgroundColor = "#161615"
+secondaryBackgroundColor = "#1F1F1D"
+textColor = "#ECECE8"
+borderColor = "#34342F"

@@ -1,4 +1,4 @@
-"""`ff` command line: runs, show, failures, clusters, gc, t2s run. Exit 0 ok, 3 on usage/db errors."""
+"""`ff` command line: runs, show, failures, clusters, gc, ui, t2s run. Exit 0 ok, 3 on usage/db errors."""
 
 from __future__ import annotations
 
@@ -38,6 +38,13 @@ def _positive_int(value: str) -> int:
         raise argparse.ArgumentTypeError(f"'{value}' is not an integer") from None
     if n <= 0:
         raise argparse.ArgumentTypeError("must be greater than 0")
+    return n
+
+
+def _port(value: str) -> int:
+    n = _positive_int(value)
+    if n > 65535:
+        raise argparse.ArgumentTypeError("must be between 1 and 65535")
     return n
 
 
@@ -196,6 +203,33 @@ def cmd_gc(args: argparse.Namespace) -> None:
     _emit(args, {"deleted_runs": runs, "deleted_orphan_spans": orphans}, text)
 
 
+def cmd_ui(args: argparse.Namespace) -> None:
+    import importlib.util
+    import os
+    import subprocess
+    from pathlib import Path
+
+    if importlib.util.find_spec("streamlit") is None:
+        raise _CliError("the UI needs Streamlit: install it with `uv sync --extra ui` (or `pip install 'failure-forensics[ui]'`)")
+    path = resolve_db_path(args.db)
+    if not path.is_file():
+        raise _CliError(f"no database at {path} (run a pipeline first, or pass --db / set FF_DB)")
+    ui_dir = Path(__file__).resolve().parent / "ui"
+    env = {**os.environ, "FF_UI_DB": str(path.resolve()), "STREAMLIT_BROWSER_GATHER_USAGE_STATS": "false"}
+    cmd = [sys.executable, "-m", "streamlit", "run", str(ui_dir / "app.py"),
+           "--server.address", "127.0.0.1", "--server.port", str(args.port),
+           "--server.headless", "true" if args.no_browser else "false",
+           "--browser.gatherUsageStats", "false"]
+    print(f"ff ui: http://127.0.0.1:{args.port}  (read-only view of {path})", file=sys.stderr)
+    try:
+        # cwd is the ui folder so Streamlit picks up its bundled .streamlit/config.toml (the theme)
+        rc = subprocess.call(cmd, cwd=ui_dir, env=env)
+    except KeyboardInterrupt:
+        rc = 0
+    if rc:
+        raise _CliError(f"streamlit exited with code {rc}")
+
+
 def cmd_t2s_run(args: argparse.Namespace) -> None:
     try:
         from .integrations import t2s
@@ -239,6 +273,12 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("gc", parents=[common], help="delete old runs")
     p.add_argument("--keep-days", type=_days, required=True, help="keep runs newer than this")
     p.set_defaults(fn=cmd_gc)
+
+    p = sub.add_parser("ui", help="local web UI over the store, read-only (needs the ui extra)")
+    p.add_argument("--db", help="SQLite file (default: $FF_DB or ./.ff/traces.db)")
+    p.add_argument("--port", type=_port, default=8501, help="port on 127.0.0.1 (default 8501)")
+    p.add_argument("--no-browser", action="store_true", help="do not open a browser tab")
+    p.set_defaults(fn=cmd_ui)
 
     p = sub.add_parser("t2s", help="trace text-to-sql-guardrails (needs the t2s extra)")
     t2s_sub = p.add_subparsers(dest="t2s_command", parser_class=_Parser)
