@@ -178,7 +178,8 @@ class Store:
 
     def gc(self, cutoff_ns: int) -> tuple[int, int]:
         """Delete runs that started before `cutoff_ns` (with spans and failures), plus orphan spans:
-        spans of runs that never finished, whose earliest span is older than `cutoff_ns`.
+        spans of runs that never finished, all of whose spans started before `cutoff_ns` (a run with any
+        younger span is still young).
         Returns (runs deleted, orphan spans deleted)."""
         with closing(self._conn()) as c, c:
             ids = [r[0] for r in c.execute("SELECT trace_id FROM runs WHERE start_ns < ?", (cutoff_ns,))]
@@ -186,7 +187,7 @@ class Store:
                 c.executemany(f"DELETE FROM {table} WHERE trace_id=?", [(i,) for i in ids])
             orphans = c.execute(
                 "DELETE FROM spans WHERE trace_id NOT IN (SELECT trace_id FROM runs) AND trace_id IN"
-                " (SELECT trace_id FROM spans GROUP BY trace_id HAVING MIN(start_ns) < ?)",
+                " (SELECT trace_id FROM spans GROUP BY trace_id HAVING MAX(start_ns) < ?)",
                 (cutoff_ns,),
             ).rowcount
             return len(ids), orphans

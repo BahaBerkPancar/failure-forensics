@@ -1,4 +1,4 @@
-"""`ff` command line: runs, show, failures, clusters, gc. Exit 0 ok, 3 on usage/db errors."""
+"""`ff` command line: runs, show, failures, clusters, gc, t2s run. Exit 0 ok, 3 on usage/db errors."""
 
 from __future__ import annotations
 
@@ -196,6 +196,21 @@ def cmd_gc(args: argparse.Namespace) -> None:
     _emit(args, {"deleted_runs": runs, "deleted_orphan_spans": orphans}, text)
 
 
+def cmd_t2s_run(args: argparse.Namespace) -> None:
+    try:
+        from .integrations import t2s
+    except ImportError as e:
+        raise _CliError(str(e)) from None
+    try:
+        summary = t2s.run_suite(args.generator, args.db, timeout_ms=args.timeout_ms, setup=not args.no_setup,
+                                log=lambda m: print(m, file=sys.stderr))
+    except (RuntimeError, ValueError, OSError) as e:
+        raise _CliError(str(e)) from None
+    lines = [f"{summary['runs']} run(s) with generator {summary['generator']}"]
+    lines += [f"  {k}: {v}" for k, v in summary["outcomes"].items()]
+    _emit(args, summary, "\n".join(lines))
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = _Parser(prog="ff", description="Find where an AI pipeline run went wrong.")
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
@@ -224,6 +239,14 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("gc", parents=[common], help="delete old runs")
     p.add_argument("--keep-days", type=_days, required=True, help="keep runs newer than this")
     p.set_defaults(fn=cmd_gc)
+
+    p = sub.add_parser("t2s", help="trace text-to-sql-guardrails (needs the t2s extra)")
+    t2s_sub = p.add_subparsers(dest="t2s_command", parser_class=_Parser)
+    r = t2s_sub.add_parser("run", parents=[common], help="run all questions and attack prompts")
+    r.add_argument("--generator", required=True, help="gold, mutated:<name>[+<name>] or recorded:<path.jsonl>")
+    r.add_argument("--timeout-ms", type=_positive_int, default=1000, help="statement timeout (default 1000)")
+    r.add_argument("--no-setup", action="store_true", help="reuse the schema from an earlier run")
+    r.set_defaults(fn=cmd_t2s_run)
     return parser
 
 
