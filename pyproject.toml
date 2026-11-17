@@ -7,6 +7,7 @@ requires-python = ">=3.12"
 dependencies = [
     "opentelemetry-api>=1.45.2",
     "opentelemetry-sdk>=1.45.2",
+    "pyyaml>=6",
 ]
 
 [project.optional-dependencies]
