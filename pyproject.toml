@@ -1,0 +1,17 @@
+[project]
+name = "failure-forensics"
+version = "0.1.0"
+description = "Traces every step of an AI pipeline, finds where a run went wrong, and turns failures into regression test cases (first target: text-to-sql-guardrails)."
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = []
+
+[project.scripts]
+failure-forensics = "failure_forensics.cli:main"
+
+[dependency-groups]
+dev = ["pytest", "ruff"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
