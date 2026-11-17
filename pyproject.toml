@@ -12,6 +12,9 @@ dependencies = [
 [project.optional-dependencies]
 # Local path, not on PyPI: needs a checkout of text-to-sql-guardrails next to this repo.
 t2s = ["text-to-sql-guardrails"]
+ui = [
+    "streamlit>=1.67.0",
+]
 
 [tool.uv.sources]
 text-to-sql-guardrails = { path = "../text-to-sql-guardrails", editable = true }

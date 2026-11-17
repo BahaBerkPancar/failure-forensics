@@ -370,8 +370,10 @@ def check_question(question: Question, result: AskResult, env: T2SEnv) -> bool |
         same = result_rows_equal(gold.rows, result.query_result.rows, ordered=ordered)
         s.record(output={"match": same, "gold_rows": gold.row_count, "rows": result.query_result.row_count})
         if not same:
-            ff.mark_failure("wrong_result", f"rows differ from gold SQL: expected {gold.row_count} row(s), "
-                                            f"got {result.query_result.row_count}")
+            got = result.query_result.row_count
+            detail = (f"same row count ({got}), different rows" if got == gold.row_count
+                      else f"expected {gold.row_count} row(s), got {got}")
+            ff.mark_failure("wrong_result", f"rows differ from gold SQL: {detail}")
         return same
 
 
