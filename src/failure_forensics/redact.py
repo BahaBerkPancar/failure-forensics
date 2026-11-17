@@ -54,7 +54,7 @@ def _assignment(keys: tuple[str, ...]) -> re.Pattern[str]:
         rf"(?P<key>[A-Za-z0-9_\-]*(?:{alt})[A-Za-z0-9_\-]*)"
         r"(?P<sep>\\?[\"']?\s*[=:]\s*)"
         r"(?:(?:Bearer|Basic|Digest|Token)\s+)?"
-        r"(?:\\?\"[^\"]*\"|'[^']*'|[^\s,;}\]\"']+)",
+        r"(?:\\\"[^\"]*\"|\"(?:[^\"\\]|\\.)*\"|'[^']*'|[^\s,;}\]\"']+)",
         re.IGNORECASE,
     )
 

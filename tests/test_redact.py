@@ -108,3 +108,14 @@ def test_json_dumped_values_and_dict_repr_in_json_text():
 
 def test_custom_keys_apply_to_text_too():
     assert "123-45" not in Redactor(keys=["ssn"]).text("{'ssn': '123-45-6789'}")
+
+
+def test_plain_quoted_value_with_escaped_quotes_is_fully_masked():
+    out = r.text(r'{"password": "ab\"cd-hunter2", "n": 1}')
+    assert "hunter2" not in out and "cd-" not in out
+    out = r.text(r'failed: password: "x\"leaked-tail" next')
+    assert "leaked-tail" not in out
+
+
+def test_json_escaped_values_still_masked():
+    assert "hunter2" not in r.text(r'{\"password\": \"hunter2\"}')

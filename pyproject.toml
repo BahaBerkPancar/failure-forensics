@@ -9,6 +9,16 @@ dependencies = [
     "opentelemetry-sdk>=1.45.2",
 ]
 
+[project.optional-dependencies]
+# Local path, not on PyPI: needs a checkout of text-to-sql-guardrails next to this repo.
+t2s = ["text-to-sql-guardrails"]
+
+[tool.uv.sources]
+text-to-sql-guardrails = { path = "../text-to-sql-guardrails", editable = true }
+
+[tool.pytest.ini_options]
+markers = ["pg: needs TEST_DATABASE_URL pointing at a disposable PostgreSQL database (and the t2s extra)"]
+
 [project.scripts]
 ff = "failure_forensics.cli:main"
 failure-forensics = "failure_forensics.cli:main"

@@ -292,3 +292,14 @@ def test_gc_removes_orphan_spans_of_unfinished_runs(seeded):
     runs, orphans = seeded.gc(T0 + 10 * 1_000_000_000)
     assert (runs, orphans) == (1, 1)
     assert seeded.get_spans("d" * 32) == [] and len(seeded.get_spans("e" * 32)) == 1  # recent orphan kept
+
+
+def test_gc_keeps_unfinished_runs_that_have_a_young_span(seeded):
+    from tests.conftest import T0, span
+
+    sec = 1_000_000_000
+    # started before the cutoff but still running: its newest span is younger than the cutoff
+    seeded.insert_spans([span("f" * 32, "51", None, "pipe", 5, 6, **{"ff.kind": "run"}),
+                         span("f" * 32, "52", "51", "late step", 20 * sec, 21 * sec)])
+    _runs, orphans = seeded.gc(T0 + 10 * sec)
+    assert orphans == 0 and len(seeded.get_spans("f" * 32)) == 2

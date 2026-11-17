@@ -1,6 +1,11 @@
 # Changelog
 
 ## Unreleased
+- `ff t2s run` and `ff.integrations.t2s`: traces text-to-sql-guardrails step by step (generate, validate, execute, compare/guard) with deterministic generators (`gold`, `mutated:<name>`, `recorded:<path>`); new `unsafe` failure kind; optional `t2s` extra; `examples/t2s/run_demo.sh` and `examples/t2s/demo.db`.
+- Culprit fallback: when the run body raises after a handled step error, the root is blamed, not the handled step.
+- `KeyError` keys keep their shape with digits replaced (`'sku-<n>'`), so `sku-404` and `sku-500` now cluster together.
+- `ff gc` keeps spans of unfinished runs that have any span younger than the cutoff.
+- Redaction handles escaped quotes inside plain-quoted secret values; README notes that bare 32-hex API keys pass.
 - Tracing API (`ff.run`, `ff.step`, `ff.mark_failure`) on OpenTelemetry, sync and async.
 - SQLite store (WAL, schema versions and migrations) with an OTel span exporter.
 - Redaction of emails, phones, IBAN/card numbers, tokens and keys, plus custom patterns and keys.

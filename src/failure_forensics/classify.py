@@ -8,7 +8,7 @@ from dataclasses import dataclass
 
 from .models import SpanRecord
 
-BUILTIN_KINDS = {"exception", "timeout", "refusal", "blocked", "wrong_result", "empty_output"}
+BUILTIN_KINDS = {"exception", "timeout", "refusal", "blocked", "wrong_result", "empty_output", "unsafe"}
 
 
 @dataclass
@@ -68,8 +68,9 @@ def _error_culprit(spans: Sequence[SpanRecord], root: SpanRecord) -> Failure:
     """Deepest error on the chain from the failed root.
 
     At each level, follow the errored child whose error is the same one the parent raised (the
-    exception that propagated); otherwise the latest-ending errored child. Errors that were caught
-    and handled never sit on that chain, so they cannot become the culprit.
+    exception that propagated); otherwise the latest-ending errored child, but only if nothing
+    finished after it (a wrapped exception). A node that failed after a handled child error is
+    blamed itself. Errors that were caught and handled never sit on that chain.
     """
     children: dict[str | None, list[SpanRecord]] = {}
     for s in spans:
@@ -80,7 +81,16 @@ def _error_culprit(spans: Sequence[SpanRecord], root: SpanRecord) -> Failure:
         if not errored:
             return _error_failure(node)
         same = [c for c in errored if _same_error(c, node)]
-        node = max(same or errored, key=lambda c: (c.end_ns, c.span_id))
+        if same:
+            node = max(same, key=lambda c: (c.end_ns, c.span_id))
+            continue
+        # Different error: the node wrapped a child's exception only if that child was the last
+        # thing to finish. Anything that ended after it means the child's error was handled and
+        # the node failed on its own.
+        latest = max(errored, key=lambda c: (c.end_ns, c.span_id))
+        if any(c.end_ns > latest.end_ns for c in children.get(node.span_id, [])):
+            return _error_failure(node)
+        node = latest
 
 
 def classify_run(spans: Sequence[SpanRecord], rules: Sequence[Rule] = ()) -> Failure | None:
@@ -115,14 +125,16 @@ _HEXID = re.compile(r"\b0x[0-9a-fA-F]+\b|\b(?=[0-9a-f]*\d)[0-9a-f]{8,}\b")
 _NUM = re.compile(r"(?<![\w.])\d+(?:\.\d+)*")
 
 
-_STABLE_KEY = re.compile(r"""KeyError: (['"])(?!.*(?:\d{6}|[0-9a-f]{8}))[^'"]{1,40}\1""", re.IGNORECASE)
+_STABLE_KEY = re.compile(r"""KeyError: (['"])(?!.*[0-9a-f]{8})([^'"]{1,40})\1""", re.IGNORECASE)
 
 
 def normalise_message(msg: str, limit: int = 200) -> str:
-    # A KeyError's quoted key is the diagnosis (different missing keys are different bugs), so it
-    # stays verbatim unless it looks like an id (6+ digits, 8+ hex chars) or is long.
-    if _STABLE_KEY.fullmatch(msg.strip()):
-        return msg.strip()
+    # A KeyError's quoted key is the diagnosis (different missing keys are different bugs), so its
+    # shape stays ('sku-<n>'), unless it looks like an id (8+ hex chars) or is long.
+    m = _STABLE_KEY.fullmatch(msg.strip())
+    if m:
+        q = m.group(1)
+        return f"KeyError: {q}{re.sub(r'\d+', '<n>', m.group(2))}{q}"
     s = _QUOTED.sub("<str>", msg)
     s = _UUID.sub("<uuid>", s)
     s = _PATH.sub("<path>", s)

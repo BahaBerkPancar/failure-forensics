@@ -54,13 +54,13 @@ def test_wrapped_exception_still_blames_the_deepest_errored_child():
     assert classify_run(spans).step == "call"
 
 
-def test_root_raising_on_its_own_is_the_culprit():
+def test_wrapped_error_follows_the_last_ending_child_even_if_the_message_differs():
     spans = [
         span(T, "1", None, "run", 0, 100, "error", **RUN, **err("ValueError", "late")),
         span(T, "2", "1", "a", 1, 50, "error", **err("KeyError", "'x'")),  # caught
     ]
     f = classify_run(spans)
-    assert f.step == "a"  # no child carries the same error: follow the latest errored child
+    assert f.step == "a"  # no child has the same error, but it ended last: a wrapped exception
 
 
 def test_marked_failure_always_counts_and_wins_if_earlier():
@@ -123,8 +123,20 @@ def test_signature_normalisation():
 
 
 def test_keyerror_keeps_the_missing_key_unless_it_looks_like_an_id():
-    assert normalise_message("KeyError: 'sku-404'") == "KeyError: 'sku-404'"
-    assert normalise_message("KeyError: 'sku-404'") != normalise_message("KeyError: 'sku-500'")
-    assert normalise_message("KeyError: 'user_1234567'") == "KeyError: <str>"
+    assert normalise_message("KeyError: 'sku-404'") == "KeyError: 'sku-<n>'"
+    assert normalise_message("KeyError: 'sku-404'") == normalise_message("KeyError: 'sku-500'")
+    assert normalise_message("KeyError: 'sku-404'") != normalise_message("KeyError: 'item-404'")
+    assert normalise_message('KeyError: "user_1234567"') == 'KeyError: "user_<n>"'
     assert normalise_message("KeyError: 'deadbeef12'") == "KeyError: <str>"
     assert normalise_message("ValueError: bad 'x'") == "ValueError: bad <str>"
+
+
+def test_root_raising_after_a_handled_step_blames_the_root():
+    spans = [
+        span(T, "1", None, "run", 0, 100, "error", **RUN, **err("ValueError", "late")),
+        span(T, "2", "1", "tool", 1, 20, "error", **err("ConnectionError", "reset")),  # caught, retried
+        span(T, "3", "1", "tool", 21, 40),  # the retry worked
+        span(T, "4", "1", "parse", 41, 60),
+    ]
+    f = classify_run(spans)
+    assert (f.step, f.message) == ("run", "ValueError: late")

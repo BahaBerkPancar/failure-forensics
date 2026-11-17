@@ -1,3 +1,5 @@
+import os
+
 import pytest
 
 import failure_forensics as ff
@@ -44,3 +46,13 @@ def seeded(tmp_path):
     for t in (a, b, c):
         store.finalize_run(t)
     return store
+
+
+def pytest_collection_modifyitems(config, items):
+    """Tests marked `pg` need a disposable PostgreSQL: skip them when TEST_DATABASE_URL is unset."""
+    if os.environ.get("TEST_DATABASE_URL"):
+        return
+    skip = pytest.mark.skip(reason="TEST_DATABASE_URL is not set")
+    for item in items:
+        if "pg" in item.keywords:
+            item.add_marker(skip)

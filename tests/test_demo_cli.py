@@ -26,16 +26,15 @@ def test_demo_clusters_exact(demo_db):
     clusters = cluster_failures(Store(demo_db), by_tag="topic")
     got = [(c.count, c.step, c.kind, c.message) for c in clusters]
     assert got == [
+        (16, "tool", "exception", "KeyError: 'sku-<n>'"),
         (10, "tool", "exception", "ConnectionError: connection reset by peer at <n>:<n>"),
-        (10, "tool", "exception", "KeyError: 'sku-500'"),
         (9, "policy", "blocked", "write statement not allowed: <str>"),
         (9, "tool", "timeout", "TimeoutError: tool call exceeded <n>s deadline"),
         (7, "answer", "empty_output", "step produced no output"),
         (7, "answer", "wrong_result", "expected <n>, got <n>"),
-        (6, "tool", "exception", "KeyError: 'sku-404'"),
     ]
     assert sum(c.count for c in clusters) == 58
-    assert clusters[0].share == 0.10
+    assert clusters[0].share == 0.16
     for c in clusters:
         assert sum(c.by_tag.values()) == c.count and set(c.by_tag) <= {"stock", "orders"}
         assert len(c.examples) == 3
@@ -50,7 +49,7 @@ def test_demo_redacts_emails(demo_db):
 def test_cli_clusters_json_and_top(demo_db, capsys):
     assert main(["clusters", "--db", str(demo_db), "--top", "2", "--json"]) == 0
     data = json.loads(capsys.readouterr().out)
-    assert [c["count"] for c in data] == [10, 10]
+    assert [c["count"] for c in data] == [16, 10]
 
 
 def test_cli_show_failing_run_marks_culprit(demo_db, capsys):
