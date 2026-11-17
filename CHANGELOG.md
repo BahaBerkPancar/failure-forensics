@@ -1,6 +1,11 @@
 # Changelog
 
 ## Unreleased
+
+## 0.1.0 - 2026-11-17
+First release. A forensics kit for AI pipelines: tracing (`ff.run`, `ff.step`) on OpenTelemetry into a local SQLite store with redaction; failure classification (culprit step, kind, signature) and clustering; the `ff` CLI and a read-only Streamlit UI; a text-to-sql-guardrails integration; and failure-to-test-case export. The entries below are the details.
+
+- `ff export --cluster SIG --to mrd|pytest`: one regression test case per distinct failing input of a cluster. mrd suites (`--merge` appends without duplicates, `expected` from the nearest passing run of the same case, otherwise null and tagged `needs_review`) and generated pytest files (`--entry module:function`, optional `--checker`), with inputs embedded as inert literals. Redaction and truncation counts are always printed; `--show-redacted` lists the cases. `examples/loop/run_loop.sh` shows the whole loop (trace, cluster, export, test fails, fix, test passes); `docs/architecture.svg`; README rewritten.
 - t2s `compare` failure says "same row count (N), different rows" when the counts match, instead of "expected N row(s), got N"; `examples/t2s/demo.db` regenerated (five clusters).
 - `ff ui`: read-only local web UI (Streamlit, optional `ui` extra, localhost only, telemetry off) with Overview, Runs, Run detail (span waterfall, culprit highlighted), Clusters and Diff (failing run against the nearest passing run of the same case, first differing step marked); data layer in `failure_forensics.ui.data`.
 - `ff t2s run` and `ff.integrations.t2s`: traces text-to-sql-guardrails step by step (generate, validate, execute, compare/guard) with deterministic generators (`gold`, `mutated:<name>`, `recorded:<path>`); new `unsafe` failure kind; optional `t2s` extra; `examples/t2s/run_demo.sh` and `examples/t2s/demo.db`.

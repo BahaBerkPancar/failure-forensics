@@ -1,11 +1,13 @@
 # failure-forensics
 
-Traces every step of an AI pipeline, finds where a run went wrong, and groups similar failures.
-Later milestones turn failures into regression test cases (first target: text-to-sql-guardrails).
+**Trace every step of an AI pipeline, find the step that broke, and turn each failure into a regression test that runs in CI.**
+
+![The loop: trace, store, cluster, export, gate](docs/architecture.svg)
 
 A pipeline run is one OpenTelemetry trace; every step is a span. Spans land in a local SQLite file
 (no collector, no Docker). Each failed run gets one **culprit** step (the first step that failed) and
-an **error signature**, and runs with the same signature form a **cluster**.
+an **error signature**, and runs with the same signature form a **cluster**. A cluster exports as an
+[mrd](../model-regression-detector) suite or a pytest file, so the same failure is caught next time.
 
 ## 30-second quick start
 
@@ -18,6 +20,39 @@ uv run ff show <run id prefix> --db examples/demo.db   # waterfall, culprit step
 
 The demo pipeline (question, plan, policy, tool, answer) injects six known failures (five clusters; the two missing-key errors share one signature): two kinds of tool
 exception, a tool timeout, a policy block, a wrong answer and an empty answer. No network, no model.
+
+## The whole loop in one command
+
+```bash
+./examples/loop/run_loop.sh        # offline, takes a couple of seconds
+```
+
+A stock-lookup pipeline with one real bug (SKUs are looked up case-sensitively) is traced for 60 runs,
+the failures are clustered, the biggest cluster is exported as a pytest file, and that file is run twice:
+on the buggy pipeline it fails, with `LOOP_FIXED=1` it passes.
+
+```text
+== 2. cluster the failures
+COUNT  SHARE  STEP    KIND       MESSAGE
+14     23.3%  lookup  exception  KeyError: 'SKU-<n>'
+2      3.3%   lookup  exception  ValueError: unknown SKU sku-<n>
+
+== 3. export the top cluster as a pytest regression test
+cluster: lookup | exception | KeyError: 'SKU-<n>'
+wrote 7 case(s) to test_regression.py
+
+== 4. gate: run the generated test on the buggy pipeline (expected: FAIL)
+FAILED test_regression.py::test_no_longer_fails_the_same_way[ff-f86641f1f61e]
+FAILED test_regression.py::test_no_longer_fails_the_same_way[ff-8f80a38bf01f]
+7 failed in 0.02s
+
+== 5. gate again with LOOP_FIXED=1 (expected: PASS)
+7 passed in 0.02s
+
+loop closed: the test failed on the buggy pipeline and passes on the fixed one.
+```
+
+The code is in `examples/loop/pipeline.py` (the entry point is `pipeline:answer`).
 
 ## Instrument your own pipeline
 
@@ -57,11 +92,49 @@ redactor=..., rules=[...])` to change that. Outside `ff.run`, `ff.step` does not
 | `ff show <run_id>` | indented waterfall with durations, inputs/outputs, culprit marked |
 | `ff failures` | the culprit of every failed run |
 | `ff clusters [--top N] [--by-tag KEY]` | signatures with count, share of runs, first/last seen, examples |
+| `ff export --cluster SIG --to mrd\|pytest` | write regression test cases for a cluster |
 | `ff gc --keep-days N` | delete older runs |
 | `ff ui [--port N]` | local web UI, read-only (needs the `ui` extra) |
 
 All take `--db PATH` and `--json`. Exit code 0, or 3 on usage and database errors.
 `failure-forensics` is an alias for `ff`.
+
+## Export: failure to test case
+
+```bash
+ff clusters --db traces.db                                   # pick a cluster
+ff export --cluster "lookup | exception | KeyError" --to mrd --out cases.yaml
+ff export --cluster "lookup | exception | KeyError" --to pytest --entry mypkg.pipeline:answer \
+          --out tests/regressions/test_lookup_keyerror.py
+```
+
+`--cluster` is a signature or any unique prefix of one (an ambiguous or unknown one exits 3). One case is
+written per **distinct failing input**: the id is a hash of the input, so repeats collapse and re-exporting
+is stable. The input is the run's recorded input (`run.record(input=...)`, else the first step that recorded
+one). `--limit N` keeps the N oldest distinct inputs.
+
+**mrd suite** (`--to mrd`): `name`, one `correct` pass/fail metric and one case per input with `id`, `input`,
+`expected` and `tags` (`signature:...`, `step:...`, `kind:...`, plus the run's tags as `key:value`).
+`expected` is the output of the nearest passing run of the same `case_id`. If there is none, `expected` is
+`null` and the case is tagged `needs_review` (mrd rejects unknown keys on a case, so this is a tag, not a
+field). `--merge existing.yaml` appends only ids that are not in the file yet. The file is real YAML written with PyYAML (a
+dependency, as in mrd); merging rewrites the file, so comments in it are dropped.
+
+**pytest file** (`--to pytest --entry module:function`): a readable file with one parametrized test that
+calls your entry point with each recorded input. For an exception failure it fails if that exception type
+(or a subclass) is raised again; a different exception re-raises, because it is a different problem. For
+a semantic failure it asserts the result equals the passing run's output, or calls `--checker
+module:function(input, result, case)`, which must return a truthy value; with neither, the case is skipped
+with the reason "needs review". Inputs are embedded as Python literals produced by `repr` and verified to
+round-trip; no stored text is ever placed in code, comments or docstrings, so a hostile input (quotes,
+triple quotes, newlines, `__import__('os')`) stays inert data (tests compile such a file and run it).
+`--entry` must look like `package.module:function`. An existing file that was not generated by `ff export`
+is never overwritten.
+
+**Redaction carries over.** Exported inputs are the already-redacted, already-truncated stored values. The
+command always prints how many exported cases contain redaction markers (and how many were cut at the
+max length, which turns them into plain strings); `--show-redacted` lists their ids. Treat those cases as
+possibly incomplete before you trust them as tests.
 
 ## UI
 
@@ -127,9 +200,14 @@ keys=[...])`. Values are cut to 500 characters by default.
   unaffected. A run that ends with no stored spans also warns. Steps in plain threads you start yourself are not attached to the run
   (contexts do not cross threads); use `contextvars.copy_context().run(...)` or `asyncio.to_thread`.
 - One culprit per run. Later failures in the same run are stored as spans but not clustered.
+- The t2s tracing is a copy of t2s's `answer()` control flow (recomposed from its public pieces, guarded by a
+  parity test), not the real function; if t2s changes its retry loop, `traced_answer` must change too.
+- `ff export` replays only what was recorded: a run that recorded no input cannot become a case, and a case's
+  input is the first recorded input, not necessarily the argument your entry function expects (adapt it in
+  the entry point).
 - Local SQLite only; no sampling, no exporters to other backends.
 
-## Tracing text-to-sql-guardrails
+## Tracing text-to-sql-guardrails (the t2s example)
 
 `ff t2s run` traces every benchmark question and attack prompt of
 [text-to-sql-guardrails](../text-to-sql-guardrails) (t2s) against its test database, with a
@@ -199,3 +277,4 @@ TEST_DATABASE_URL=postgresql+psycopg://app:app@127.0.0.1:55432/app uv run --extr
 - `DECISIONS.md` - why things are the way they are
 - `CHANGELOG.md` - what changed in each release
 - `plans/` - roadmap and milestone plans
+- `docs/architecture.svg` - the loop diagram (plain SVG, dark-mode aware, system fonts)
