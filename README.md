@@ -7,7 +7,7 @@
 A pipeline run is one OpenTelemetry trace; every step is a span. Spans land in a local SQLite file
 (no collector, no Docker). Each failed run gets one **culprit** step (the first step that failed) and
 an **error signature**, and runs with the same signature form a **cluster**. A cluster exports as an
-[mrd](../model-regression-detector) suite or a pytest file, so the same failure is caught next time.
+[mrd](https://github.com/BahaBerkPancar/model-regression-detector) suite or a pytest file, so the same failure is caught next time.
 
 ## 30-second quick start
 
@@ -210,7 +210,7 @@ keys=[...])`. Values are cut to 500 characters by default.
 ## Tracing text-to-sql-guardrails (the t2s example)
 
 `ff t2s run` traces every benchmark question and attack prompt of
-[text-to-sql-guardrails](../text-to-sql-guardrails) (t2s) against its test database, with a
+[text-to-sql-guardrails](https://github.com/BahaBerkPancar/text-to-sql-guardrails) (t2s) against its test database, with a
 deterministic generator instead of a model. Nothing in t2s is edited, nothing calls an API.
 
 ```bash
